@@ -81,7 +81,7 @@ async def run_council(
     )
 
     # 4. Compute Confidence Breakdown
-    confidence_breakdown = confidence_engine.score(
+    confidence_breakdown = await confidence_engine.ascore(
         retrieved_chunks=context_chunks,
         aggregated_answer=final_answer,
         agent_responses=agent_responses,

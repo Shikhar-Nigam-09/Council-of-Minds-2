@@ -31,9 +31,9 @@ async def _get_or_recover_index(
         return None, None
 
     logger.info(
-        f"Authoritative chunks found in DB (n={len(chunks)}) but FAISS index missing. Rebuilding index..."
+        f"Authoritative chunks found in DB (n={len(chunks)}) but FAISS index missing or incompatible. Rebuilding index..."
     )
-    embeddings = embedding_service.embed_texts([c.content for c in chunks])
+    embeddings = await embedding_service.aembed_texts([c.content for c in chunks])
     index, metadata = await vector_store.rebuild_index_from_chunks(
         user_id=user_id,
         chunks=chunks,
@@ -68,7 +68,9 @@ async def add_document_chunks_to_index(
         if index is None or metadata is None:
             index, metadata = vector_store.build_index()
 
-        embeddings = embedding_service.embed_texts([c.content for c in chunk_objs])
+        embeddings = await embedding_service.aembed_texts(
+            [c.content for c in chunk_objs]
+        )
         await vector_store.add_vectors(
             user_id=user_id,
             index=index,
@@ -94,7 +96,7 @@ async def _rebuild_user_index(
         await vector_store.delete_index(user_id, storage_client)
         return None, None
 
-    embeddings = embedding_service.embed_texts([c.content for c in chunks])
+    embeddings = await embedding_service.aembed_texts([c.content for c in chunks])
     return await vector_store.rebuild_index_from_chunks(
         user_id=user_id,
         chunks=chunks,
@@ -143,5 +145,5 @@ async def search_user_index(
                 "results": [],
                 "message": "No indexed documents available for this user.",
             }
-        query_vector = embedding_service.embed_query(query_text)
+        query_vector = await embedding_service.aembed_query(query_text)
         return vector_store.search(user_id, index, metadata, query_vector, top_k)

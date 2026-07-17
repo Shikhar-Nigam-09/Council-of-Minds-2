@@ -10,31 +10,11 @@ from app.services.rag.embedding_service import embedding_service
 logger = logging.getLogger(__name__)
 
 
-def compute_evidence_coverage(
+async def acompute_evidence_coverage(
     aggregated_answer: str, retrieved_chunks: List[ChunkRef]
 ) -> float:
     """
-    Computes the Evidence Coverage signal using an embedding-based grounding heuristic.
-
-    Important Semantic Note:
-    This metric measures **semantic evidence support** rather than factual correctness.
-    It evaluates the degree to which the statements and themes in the synthesized answer
-    align semantically with the text of the retrieved document chunks. High coverage indicates
-    that the answer discusses topics well-supported by the retrieved evidence; it does not
-    guarantee that every granular fact or number is incontrovertibly true.
-
-    Methodology:
-    1. If the retrieved chunks list is empty or the aggregated answer is empty/whitespace,
-       returns 0.0 immediately.
-    2. We segment the aggregated answer into individual sentences or clauses using punctuation delimiters.
-    3. We embed each sentence and all retrieved chunk texts using our L2-normalized MiniLM embedding model.
-    4. For each sentence s_j, we compute its cosine similarity against all chunk embeddings C_i:
-           sim(s_j, C_i) = dot(embed(s_j), embed(C_i))
-       We find the maximum similarity across all chunks:
-           max_sim(s_j) = max_i(sim(s_j, C_i))
-       and clamp it to [0.0, 1.0].
-    5. Evidence Coverage is the arithmetic mean of these maximum similarities across all sentences:
-           Evidence Coverage = (1 / K) * sum(max_sim(s_j)) for j=1..K
+    Computes the Evidence Coverage signal using an embedding-based grounding heuristic asynchronously.
     """
     if not retrieved_chunks or len(retrieved_chunks) == 0:
         logger.debug("Evidence Coverage: 0.0 (empty retrieval list)")
@@ -63,8 +43,8 @@ def compute_evidence_coverage(
 
     try:
         # Embed sentences (shape: K x 384) and chunks (shape: N x 384), both L2 normalized
-        sentence_embs = embedding_service.embed_texts(sentences)
-        chunk_embs = embedding_service.embed_texts(chunk_texts)
+        sentence_embs = await embedding_service.aembed_texts(sentences)
+        chunk_embs = await embedding_service.aembed_texts(chunk_texts)
 
         # Compute cosine similarity matrix (shape: K x N) via dot product
         sim_matrix = np.dot(sentence_embs, chunk_embs.T)
@@ -84,3 +64,22 @@ def compute_evidence_coverage(
             exc_info=True,
         )
         return 0.0
+
+
+def compute_evidence_coverage(
+    aggregated_answer: str, retrieved_chunks: List[ChunkRef]
+) -> float:
+    """Synchronous wrapper for acompute_evidence_coverage."""
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        raise RuntimeError(
+            "compute_evidence_coverage() cannot be called from an active async event loop. "
+            "Use 'await acompute_evidence_coverage()' instead."
+        )
+    return asyncio.run(acompute_evidence_coverage(aggregated_answer, retrieved_chunks))

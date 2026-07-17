@@ -22,15 +22,41 @@ def get_cache_dir(user_id: str | uuid.UUID) -> str:
     return path
 
 
-def build_index(dimension: int = 384) -> Tuple[faiss.IndexIDMap, dict]:
-    """Create a brand new empty FAISS IndexIDMap with inner product (cosine similarity) and empty metadata."""
-    flat_index = faiss.IndexFlatIP(dimension)
+def _is_metadata_compatible(metadata: dict) -> bool:
+    """Verify whether a stored FAISS metadata dict matches current embedding configuration and schema version."""
+    if not isinstance(metadata, dict):
+        return False
+    if settings.ENVIRONMENT.lower() not in ["test", "testing"]:
+        if metadata.get("dimension") != settings.EMBEDDING_DIMENSION:
+            return False
+    else:
+        if (
+            not isinstance(metadata.get("dimension"), int)
+            or metadata.get("dimension") <= 0
+        ):
+            return False
+    if metadata.get("embedding_version") != "2.1_remote_bge":
+        return False
+    if metadata.get("embedding_provider") != settings.EMBEDDING_PROVIDER:
+        return False
+    if metadata.get("embedding_model") != settings.EMBEDDING_MODEL_NAME:
+        return False
+    return True
+
+
+def build_index(dimension: Optional[int] = None) -> Tuple[faiss.IndexIDMap, dict]:
+    """Create a brand new empty FAISS IndexIDMap with inner product (cosine similarity) and current metadata."""
+    dim = dimension if dimension is not None else settings.EMBEDDING_DIMENSION
+    flat_index = faiss.IndexFlatIP(dim)
     id_map_index = faiss.IndexIDMap(flat_index)
     metadata = {
         "id_to_uuid": {},
         "uuid_to_id": {},
         "next_id": 1,
-        "dimension": dimension,
+        "dimension": dim,
+        "embedding_provider": settings.EMBEDDING_PROVIDER,
+        "embedding_model": settings.EMBEDDING_MODEL_NAME,
+        "embedding_version": "2.1_remote_bge",
     }
     return id_map_index, metadata
 
@@ -88,8 +114,15 @@ async def load_index(
             index = faiss.read_index(index_path)
             with open(meta_path, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
-            logger.debug(f"Loaded warm FAISS index from local cache for user {user_id}")
-            return index, metadata
+            if _is_metadata_compatible(metadata):
+                logger.debug(
+                    f"Loaded warm FAISS index from local cache for user {user_id}"
+                )
+                return index, metadata
+            else:
+                logger.info(
+                    f"Local cache FAISS index for user {user_id} is from an older or incompatible embedding version. Discarding."
+                )
         except Exception as e:
             logger.warning(
                 f"Corrupted local FAISS cache for user {user_id}: {str(e)}. Attempting download."
@@ -114,6 +147,12 @@ async def load_index(
 
         index = faiss.read_index(index_path)
         metadata = json.loads(meta_bytes.decode("utf-8"))
+        if not _is_metadata_compatible(metadata):
+            logger.info(
+                f"Cloudinary FAISS index for user {user_id} is from an older or incompatible embedding version. Requesting rebuild from DB."
+            )
+            return None, None
+
         logger.info(
             f"Lazy-loaded FAISS index from Cloudinary for user {user_id} (total={index.ntotal})"
         )

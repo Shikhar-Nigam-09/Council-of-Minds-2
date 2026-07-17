@@ -102,7 +102,7 @@ async def ask_question(
 
     chunk_refs: List[ChunkRef] = []
     try:
-        query_vector = embedding_service.embed_query(retrieval_query_str)
+        query_vector = await embedding_service.aembed_query(retrieval_query_str)
         logger.info(
             f"[Diagnostic Retrieval] query embedding shape: {query_vector.shape}, dtype: {query_vector.dtype}"
         )

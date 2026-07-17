@@ -4,8 +4,12 @@ from typing import List
 from app.core.config import settings
 from app.schemas.agent_response import AgentResponse
 from app.schemas.council_response import ChunkRef, ConfidenceBreakdown
-from app.services.confidence.agent_agreement import compute_agent_agreement
-from app.services.confidence.evidence_coverage import compute_evidence_coverage
+from app.services.confidence.agent_agreement import (
+    acompute_agent_agreement,
+)
+from app.services.confidence.evidence_coverage import (
+    acompute_evidence_coverage,
+)
 from app.services.confidence.retrieval_quality import compute_retrieval_quality
 
 logger = logging.getLogger(__name__)
@@ -52,17 +56,16 @@ class ConfidenceEngine:
             logger.error(err_msg)
             raise ValueError(err_msg)
 
-    def score(
+    async def ascore(
         self,
         retrieved_chunks: List[ChunkRef],
         aggregated_answer: str,
         agent_responses: List[AgentResponse],
     ) -> ConfidenceBreakdown:
         """
-        Calculates the three independent signals and combines them into an auditable
+        Calculates the three independent signals asynchronously and combines them into an auditable
         ConfidenceBreakdown object.
         """
-        # Ensure weights are valid on every run (in case settings were mutated in tests)
         self._validate_weights()
 
         w_ret = settings.CONFIDENCE_WEIGHT_RETRIEVAL
@@ -70,8 +73,8 @@ class ConfidenceEngine:
         w_agr = settings.CONFIDENCE_WEIGHT_AGREEMENT
 
         ret_score = compute_retrieval_quality(retrieved_chunks)
-        ev_score = compute_evidence_coverage(aggregated_answer, retrieved_chunks)
-        agr_score = compute_agent_agreement(agent_responses)
+        ev_score = await acompute_evidence_coverage(aggregated_answer, retrieved_chunks)
+        agr_score = await acompute_agent_agreement(agent_responses)
 
         final_score = (ret_score * w_ret) + (ev_score * w_ev) + (agr_score * w_agr)
         final_score = max(0.0, min(1.0, float(final_score)))
@@ -91,6 +94,32 @@ class ConfidenceEngine:
                 "evidence_coverage": w_ev,
                 "agent_agreement": w_agr,
             },
+        )
+
+    def score(
+        self,
+        retrieved_chunks: List[ChunkRef],
+        aggregated_answer: str,
+        agent_responses: List[AgentResponse],
+    ) -> ConfidenceBreakdown:
+        """
+        Calculates the three independent signals and combines them into an auditable
+        ConfidenceBreakdown object synchronously.
+        """
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None and loop.is_running():
+            raise RuntimeError(
+                "ConfidenceEngine.score() cannot be called from an active async event loop. "
+                "Use 'await confidence_engine.ascore(...)' instead."
+            )
+        return asyncio.run(
+            self.ascore(retrieved_chunks, aggregated_answer, agent_responses)
         )
 
 

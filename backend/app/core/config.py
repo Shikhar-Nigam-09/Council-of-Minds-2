@@ -1,4 +1,4 @@
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -111,9 +111,29 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("CHUNK_OVERLAP", "BACKEND_CHUNK_OVERLAP"),
     )
     EMBEDDING_MODEL_NAME: str = Field(
-        default="all-MiniLM-L6-v2",
+        default="BAAI/bge-small-en-v1.5",
         validation_alias=AliasChoices(
             "EMBEDDING_MODEL_NAME", "BACKEND_EMBEDDING_MODEL_NAME"
+        ),
+    )
+    EMBEDDING_PROVIDER: str = Field(
+        default="remote_hf",
+        validation_alias=AliasChoices(
+            "EMBEDDING_PROVIDER", "BACKEND_EMBEDDING_PROVIDER"
+        ),
+    )
+    EMBEDDING_API_KEY: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("EMBEDDING_API_KEY", "BACKEND_EMBEDDING_API_KEY"),
+    )
+    EMBEDDING_API_URL: str = Field(
+        default="https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5",
+        validation_alias=AliasChoices("EMBEDDING_API_URL", "BACKEND_EMBEDDING_API_URL"),
+    )
+    EMBEDDING_DIMENSION: int = Field(
+        default=384,
+        validation_alias=AliasChoices(
+            "EMBEDDING_DIMENSION", "BACKEND_EMBEDDING_DIMENSION"
         ),
     )
     FAISS_INDEX_CLOUDINARY_FOLDER: str = Field(
